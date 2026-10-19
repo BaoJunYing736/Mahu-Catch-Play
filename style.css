@@ -13,19 +13,19 @@ body {
     background-color: #f4ebd9;
     color: #6b4b3a;
     overflow: hidden;
+    touch-action: none; 
 }
 
 .screen {
-    width: 800px;
-    height: 700px;
+    width: 100vw;
+    max-width: 800px;
+    height: 100vh;
+    max-height: 700px;
     background-color: rgba(255, 255, 255, 0.85); 
     border: 4px solid #e0cbb5; 
     border-radius: 30px;
     position: relative;
-    
-    /* 允许猫猫溢出 */
     overflow: visible; 
-    
     display: none; 
     flex-direction: column;
     align-items: center;
@@ -35,17 +35,15 @@ body {
     background-size: cover;
     background-position: center;
     background-blend-mode: overlay;
-    
-    /* 为了给上面的猫猫留出空间，把整个框往下挪一点 */
-    margin-top: 60px; 
+    margin-top: 4vh; 
 }
 
 #game-area {
     width: 100%;
     height: 100%;
     position: relative;
-    overflow: hidden; /* 内部区域隐藏，防止食物飞出 */
-    border-radius: 26px; /* 贴合大框的内部圆角 */
+    overflow: hidden;
+    border-radius: 26px; 
     background-image: 
         linear-gradient(rgba(255, 192, 203, 0.15) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255, 192, 203, 0.15) 1px, transparent 1px);
@@ -100,7 +98,6 @@ h1 {
     z-index: 10;
 }
 
-/* 按钮组排版 */
 .button-group {
     display: flex;
     flex-direction: row;
@@ -114,21 +111,21 @@ h1 {
 .grid-2x2 {
     display: grid;
     grid-template-columns: 1fr 1fr; 
-    gap: 35px 40px; 
+    gap: 25px 20px; 
     width: 100%;
-    max-width: 520px; 
+    max-width: 420px; 
     margin: 40px auto 0; 
     justify-items: center; 
 }
 
 .grid-2x2 button {
-    width: 220px; 
-    height: 60px; 
+    width: 100%; 
+    height: 55px; 
     padding: 0; 
     display: flex;
     justify-content: center;
     align-items: center;
-    font-size: 20px; 
+    font-size: 18px; /* 👈 统一字号 */
 }
 
 button {
@@ -152,20 +149,16 @@ button:active { transform: translateY(4px); box-shadow: 0 0 0 #cc7a00; }
 .secondary-btn {
     background-color: #a07a65;
     box-shadow: 0 4px 0 #7a5a4a;
-    font-size: 18px;
-    padding: 12px 20px;
+    font-size: 18px; /* 👈 统一字号 */
 }
 .secondary-btn:hover { background-color: #8a6755; }
 
-/* ========================================= */
-/* 👇 完美啃边界的猫猫 (修复版) 👇 */
-/* ========================================= */
 .peek-cat {
     position: absolute;
-    top: -75px; /* 把猫猫往上提，让它正好咬住边框 */
+    top: -75px; 
     right: 60px; 
     width: 160px; 
-    z-index: 9999; /* 层级拉到最高，防止被背景挡住 */
+    z-index: 9999; 
     pointer-events: none;
     filter: drop-shadow(0 5px 5px rgba(0,0,0,0.2)); 
 }
@@ -338,4 +331,22 @@ button:active { transform: translateY(4px); box-shadow: 0 0 0 #cc7a00; }
     content: '🔒'; position: absolute;
     top: 50%; left: 50%; transform: translate(-50%, -50%);
     font-size: 30px;
+}
+
+@media (max-width: 850px) {
+    .screen {
+        border-radius: 0; 
+        border: none;
+        margin-top: 0;
+    }
+    h1 { font-size: 36px; }
+    .subtitle { font-size: 16px; padding: 10px; }
+    .grid-2x2 { gap: 15px; margin-top: 15px; max-width: 320px;}
+    .grid-2x2 button { height: 50px; font-size: 16px; }
+    .peek-cat { width: 100px; top: -50px; right: 20px; }
+    #score-board { font-size: 16px; padding: 5px 10px; }
+    #quit-btn { font-size: 12px !important; padding: 3px 8px !important; margin-left: 10px !important;}
+    #combo-display { font-size: 26px; }
+    .modal-content { width: 90%; padding: 15px; }
+    .skin-item img { width: 60px; height: 60px; }
 }

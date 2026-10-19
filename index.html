@@ -2,37 +2,39 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Mahu Catch & Play</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.mjs" crossorigin="anonymous"></script>
 </head>
 <body>
     <!-- Start Screen -->
     <div id="start-screen" class="screen active">
-        <!-- 👇 主界面的啃边猫猫 👇 -->
         <img class="peek-cat" src="assets/peek-cat.png" alt="Peeking Cat">
         
         <h1>Mahu Catch & Play</h1>
-        <p class="subtitle">Use LEFT / RIGHT arrow keys to catch food and avoid toxic items!</p>
+        <p class="subtitle">Catch food, avoid toxic items!</p>
         
         <div class="button-group grid-2x2">
-            <button id="start-btn">Start Game</button>
+            <button id="start-camera-btn" class="secondary-btn" style="grid-column: span 2;">Camera Mode</button>
+            <button id="start-btn" class="secondary-btn" style="grid-column: span 2;">Classic Mode</button>
+            
             <button id="gallery-btn" class="secondary-btn">Gallery</button>
             <button id="start-next-bg-btn" class="secondary-btn">Next Theme</button>
-            <button id="start-bg-btn" class="secondary-btn">Custom BG</button>
+            
+            <button id="start-bg-btn" class="secondary-btn" style="grid-column: span 2;">Custom BG</button>
             <input type="file" id="start-bg-upload" accept="image/*" style="display: none;">
         </div>
     </div>
 
     <!-- Game Screen -->
     <div id="game-screen" class="screen">
-        <!-- 👇 游戏界面的啃边猫猫 👇 -->
         <img class="peek-cat" src="assets/peek-cat.png" alt="Peeking Cat">
 
         <div id="score-board">
             <span>Score: <span id="score">0</span></span>
-            <span style="margin-left: 30px;">HP: <span id="hp">3</span> ❤️</span>
-            <button id="quit-btn" style="margin-left: 30px; padding: 5px 15px; font-size: 16px; vertical-align: middle; box-shadow: 0 2px 0 #cc7a00;">Quit</button>
+            <span style="margin-left: 20px;">HP: <span id="hp">3</span> ❤️</span>
+            <button id="quit-btn" style="margin-left: 20px; padding: 5px 15px; font-size: 16px; vertical-align: middle; box-shadow: 0 2px 0 #cc7a00;">Quit</button>
         </div>
         
         <div id="game-area">
@@ -48,27 +50,27 @@
 
     <!-- Game Over Screen -->
     <div id="game-over-screen" class="screen">
-        <!-- 👇 结束界面的啃边猫猫 👇 -->
         <img class="peek-cat" src="assets/peek-cat.png" alt="Peeking Cat">
 
         <h1>Game Over</h1>
         <p class="final-score-text">Final Score: <span id="final-score">0</span></p>
         
-        <div style="display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 20px; background: rgba(255,255,255,0.8); padding: 15px 30px; border-radius: 20px;">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 20px; background: rgba(255,255,255,0.8); padding: 15px 30px; border-radius: 20px; z-index: 10; position: relative;">
             <img id="unlocked-cat-img" src="assets/cats/cat1.png" style="width: 80px; height: 80px; object-fit: contain;">
             <div style="text-align: left;">
-                <p id="unlock-message" style="font-size: 18px; font-weight: bold; color: #6b4b3a; margin: 0;">当前形象: Mahu 1</p>
-                <p id="next-unlock-info" style="font-size: 14px; color: #a07a65; margin: 5px 0 0 0;">距离解锁新形象还需 100 分</p>
+                <p id="unlock-message" style="font-size: 18px; font-weight: bold; color: #6b4b3a; margin: 0;">Equipped: Mahu #1</p>
+                <p id="next-unlock-info" style="font-size: 14px; color: #a07a65; margin: 5px 0 0 0;">Next unlock in 100 pts</p>
             </div>
         </div>
 
         <p id="game-over-reason">You ate too much toxic food!</p>
         
         <div class="button-group grid-2x2">
-            <button id="restart-btn">Play Again</button>
+            <button id="restart-btn" class="secondary-btn">Play Again</button>
+            <button id="main-menu-btn" class="secondary-btn">Main Menu</button>
             <button id="over-gallery-btn" class="secondary-btn">Gallery</button>
             <button id="over-next-bg-btn" class="secondary-btn">Next Theme</button>
-            <button id="bg-btn" class="secondary-btn">Custom BG</button>
+            <button id="bg-btn" class="secondary-btn" style="grid-column: span 2;">Custom BG</button>
             <input type="file" id="bg-upload" accept="image/*" style="display: none;">
         </div>
     </div>
@@ -78,13 +80,11 @@
         <div class="modal-content">
             <h2>Mahu Gallery</h2>
             <p>Earn 100 points to unlock the next Mahu!</p>
-            <div id="gallery-grid" class="gallery-grid">
-                <!-- JS 会在这里生成 9 个形象格子 -->
-            </div>
+            <div id="gallery-grid" class="gallery-grid"></div>
             <button id="close-gallery-btn" class="secondary-btn" style="margin-top: 20px;">Close</button>
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <script type="module" src="script.js"></script>
 </body>
 </html>

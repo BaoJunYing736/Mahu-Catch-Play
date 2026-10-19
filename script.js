@@ -1,8 +1,11 @@
+import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8";
+
 const startScreen = document.getElementById('start-screen');
 const gameScreen = document.getElementById('game-screen');
 const gameOverScreen = document.getElementById('game-over-screen');
 const startBtn = document.getElementById('start-btn');
 const restartBtn = document.getElementById('restart-btn');
+const mainMenuBtn = document.getElementById('main-menu-btn');
 const cat = document.getElementById('cat');
 const catShadow = document.getElementById('cat-shadow');
 const scoreDisplay = document.getElementById('score');
@@ -12,6 +15,7 @@ const gameOverReason = document.getElementById('game-over-reason');
 const gameArea = document.getElementById('game-area');
 const quitBtn = document.getElementById('quit-btn'); 
 const comboDisplay = document.getElementById('combo-display');
+const startCameraBtn = document.getElementById('start-camera-btn');
 
 const galleryBtn = document.getElementById('gallery-btn');
 const galleryModal = document.getElementById('gallery-modal');
@@ -33,7 +37,13 @@ let spawnInterval = 800;
 let combo = 1;
 let isFrozen = false;
 
-// 形象管理配置
+// Camera Variables
+let handLandmarker = null;
+let webcamRunning = false;
+let video = null;
+let lastVideoTime = -1;
+
+// Skin Management
 const totalSkins = 9;
 let highestScore = parseInt(localStorage.getItem('mahuHighScore')) || 0;
 let maxUnlockedLevel = Math.min(Math.floor(highestScore / 100) + 1, totalSkins);
@@ -48,26 +58,29 @@ function updateMainCat() {
 }
 updateMainCat();
 
-// 音效系统
+// Sound System
 const sounds = {
     normal: new Audio('assets/normal.mp3'), 
     good: new Audio('assets/good.mp3'),
     toxic: new Audio('assets/game_over.mp3'),
-    click: new Audio('assets/game_start.mp3')
+    start: new Audio('assets/game_start.mp3'),
+    button: new Audio('assets/button.mp3')
 };
+
 sounds.normal.volume = 0.6;
 sounds.good.volume = 0.6;
 sounds.toxic.volume = 0.8;
-sounds.click.volume = 0.5;
+sounds.start.volume = 0.5;
+sounds.button.volume = 0.5; 
 
 function playSound(soundName) {
     if (sounds[soundName]) {
         const soundClone = sounds[soundName].cloneNode();
-        soundClone.play().catch(e => console.log("音频播放被拦截:", e));
+        soundClone.play().catch(e => console.log("Audio error:", e));
     }
 }
 
-// 食物配置
+// Food Config
 const normalFoods = [
     { img: "assets/jerky.png", points: 2, sound: 'good' },
     { img: "assets/canned_food.png", points: 1, sound: 'good' },
@@ -113,6 +126,7 @@ function startSpawnLoop() {
 }
 
 function endGame(isToxic) {
+    webcamRunning = false;
     isPlaying = false;
     clearInterval(spawnLoop);
     
@@ -131,9 +145,9 @@ function endGame(isToxic) {
         unlockMessage.innerText = `All 9 Mahu Unlocked!`;
         nextUnlockInfo.innerText = `You've collected them all!`;
     } else {
-        unlockMessage.innerText = `Currently Equipped: Mahu #${selectedSkinLevel}`;
+        unlockMessage.innerText = `Equipped: Mahu #${selectedSkinLevel}`;
         let scoreNeeded = (maxUnlockedLevel * 100) - highestScore;
-        nextUnlockInfo.innerText = `Next unlock at ${maxUnlockedLevel * 100} pts (Need ${scoreNeeded} more)`;
+        nextUnlockInfo.innerText = `Next unlock at ${maxUnlockedLevel * 100} pts (Need ${scoreNeeded})`;
     }
 
     gameScreen.classList.remove('active');
@@ -141,6 +155,7 @@ function endGame(isToxic) {
 }
 
 function quitGame() {
+    webcamRunning = false;
     isPlaying = false;
     clearInterval(spawnLoop);
     document.querySelectorAll('.falling-item').forEach(item => item.remove());
@@ -291,7 +306,7 @@ function renderGallery() {
 
         div.addEventListener('click', () => {
             if (isUnlocked) {
-                playSound('click');
+                playSound('button'); 
                 selectedSkinLevel = i;
                 localStorage.setItem('mahuSelectedSkin', selectedSkinLevel); 
                 updateMainCat();
@@ -372,8 +387,9 @@ function updateCatPosition() {
     catShadow.style.left = catPosition + '%';
 }
 
+// Keyboard Control
 document.addEventListener('keydown', (e) => {
-    if (!isPlaying) return;
+    if (!isPlaying || webcamRunning) return; 
     if (e.key === 'ArrowLeft') catPosition -= 8;
     else if (e.key === 'ArrowRight') catPosition += 8;
 
@@ -382,28 +398,132 @@ document.addEventListener('keydown', (e) => {
     updateCatPosition();
 });
 
-function gameTick() {
-    if (isPlaying) checkCollision();
-    requestAnimationFrame(gameTick);
+// Touch Control
+let touchStartX = 0;
+let touchEndX = 0;
+
+document.addEventListener('touchstart', (e) => {
+    touchStartX = e.changedTouches[0].screenX;
+}, { passive: false });
+
+document.addEventListener('touchmove', (e) => {
+    if (isPlaying) {
+        e.preventDefault(); 
+    }
+}, { passive: false });
+
+document.addEventListener('touchend', (e) => {
+    if (!isPlaying || webcamRunning) return;
+    
+    touchEndX = e.changedTouches[0].screenX;
+    handleSwipe();
+}, { passive: false });
+
+function handleSwipe() {
+    const swipeThreshold = 20; 
+    const diff = touchEndX - touchStartX;
+
+    if (diff > swipeThreshold) {
+        catPosition += 15;
+    } else if (diff < -swipeThreshold) {
+        catPosition -= 15;
+    }
+
+    if (catPosition < 5) catPosition = 5;
+    if (catPosition > 95) catPosition = 95;
+
+    updateCatPosition();
 }
 
-// 形象库开关
+// ==========================================
+// Camera Gesture Tracking
+// ==========================================
+async function initCamera() {
+    startCameraBtn.innerText = "Loading AI...";
+    
+    try {
+        const vision = await FilesetResolver.forVisionTasks(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
+        );
+        handLandmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: {
+                modelAssetPath: "assets/hand_landmarker.task", 
+                delegate: "GPU"
+            },
+            runningMode: "VIDEO",
+            numHands: 1
+        });
+
+        video = document.createElement("video");
+        video.style.display = "none"; 
+        document.body.appendChild(video);
+
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        await video.play();
+        webcamRunning = true;
+
+        startCameraBtn.innerText = "Camera Mode";
+        playSound('start');
+        startGame();
+        
+        detectHands();
+    } catch (err) {
+        alert("Camera failed to start. Please allow permissions.\n" + err);
+        startCameraBtn.innerText = "Camera Mode";
+    }
+}
+
+function detectHands() {
+    if (!webcamRunning) return;
+
+    if (video.currentTime !== lastVideoTime) {
+        lastVideoTime = video.currentTime;
+        
+        const results = handLandmarker.detectForVideo(video, performance.now());
+
+        if (results.landmarks && results.landmarks.length > 0) {
+            const handX = results.landmarks[0][0].x; 
+            
+            // Flip direction for mirror effect
+            let newPosition = (1 - handX) * 100;
+            
+            if (newPosition < 5) newPosition = 5;
+            if (newPosition > 95) newPosition = 95;
+            
+            catPosition = newPosition;
+            updateCatPosition();
+        }
+    }
+    requestAnimationFrame(detectHands);
+}
+
+startCameraBtn.addEventListener('click', () => {
+    playSound('button');
+    initCamera().catch(err => {
+        alert("Camera error:\n" + err);
+        startCameraBtn.innerText = "Camera Mode";
+    });
+});
+
+// ==========================================
+// UI Events
+// ==========================================
 galleryBtn.addEventListener('click', () => {
-    playSound('click');
+    playSound('button'); 
     renderGallery();
     galleryModal.classList.add('show');
 });
 overGalleryBtn.addEventListener('click', () => {
-    playSound('click');
+    playSound('button'); 
     renderGallery();
     galleryModal.classList.add('show');
 });
 closeGalleryBtn.addEventListener('click', () => {
-    playSound('click');
+    playSound('button'); 
     galleryModal.classList.remove('show');
 });
 
-// 背景管理
 const allScreens = document.querySelectorAll('.screen'); 
 const startNextBgBtn = document.getElementById('start-next-bg-btn');
 const overNextBgBtn = document.getElementById('over-next-bg-btn');
@@ -435,14 +555,14 @@ function nextBackground() {
     currentBgIndex++;
     if (currentBgIndex >= builtInBackgrounds.length) currentBgIndex = 0;
     applyBackgroundToAll(builtInBackgrounds[currentBgIndex]);
-    playSound('click'); 
+    playSound('button'); 
 }
 
 startNextBgBtn.addEventListener('click', nextBackground);
 overNextBgBtn.addEventListener('click', nextBackground);
 
 startBgBtn.addEventListener('click', () => {
-    playSound('click');
+    playSound('button'); 
     startBgUpload.click();
 });
 startBgUpload.addEventListener('change', (e) => {
@@ -457,7 +577,7 @@ startBgUpload.addEventListener('change', (e) => {
 });
 
 bgBtn.addEventListener('click', () => {
-    playSound('click');
+    playSound('button'); 
     bgUpload.click();
 });
 bgUpload.addEventListener('change', (e) => {
@@ -471,8 +591,25 @@ bgUpload.addEventListener('change', (e) => {
     }
 });
 
-startBtn.addEventListener('click', () => { playSound('click'); startGame(); });
-restartBtn.addEventListener('click', () => { playSound('click'); startGame(); });
-quitBtn.addEventListener('click', () => { playSound('click'); quitGame(); }); 
+// Start, Restart, Quit, Main Menu
+startBtn.addEventListener('click', () => { playSound('start'); startGame(); });
+restartBtn.addEventListener('click', () => { playSound('start'); startGame(); });
+quitBtn.addEventListener('click', () => { playSound('button'); quitGame(); }); 
+
+mainMenuBtn.addEventListener('click', () => {
+    playSound('button');
+    gameOverScreen.classList.remove('active');
+    startScreen.classList.add('active');
+});
+
+// ==========================================
+// 👇 游戏主循环 (碰撞检测)
+// ==========================================
+function gameTick() {
+    if (isPlaying) {
+        checkCollision();
+    }
+    requestAnimationFrame(gameTick);
+}
 
 gameTick();

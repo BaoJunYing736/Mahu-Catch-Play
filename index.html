@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Mahu Catch & Play</title>
     <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.mjs" crossorigin="anonymous"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.mjs" crossorigin="anonymous"></script>
 </head>
 <body>
     <!-- Start Screen -->
@@ -15,21 +15,32 @@
         <h1>Mahu Catch & Play</h1>
         <p class="subtitle">Catch food, avoid toxic items!</p>
         
-        <div class="button-group grid-2x2">
-            <button id="start-camera-btn" class="secondary-btn" style="grid-column: span 2;">Camera Mode</button>
-            <button id="start-btn" class="secondary-btn" style="grid-column: span 2;">Classic Mode</button>
-            
-            <button id="gallery-btn" class="secondary-btn">Gallery</button>
-            <button id="start-next-bg-btn" class="secondary-btn">Next Theme</button>
-            
-            <button id="start-bg-btn" class="secondary-btn" style="grid-column: span 2;">Custom BG</button>
-            <input type="file" id="start-bg-upload" accept="image/*" style="display: none;">
+        <div class="main-menu-buttons">
+            <button id="start-camera-btn" class="secondary-btn">Camera Mode</button>
+            <button id="start-btn" class="secondary-btn">Classic Mode</button>
+            <button id="settings-btn" class="secondary-btn">Settings</button>
         </div>
     </div>
 
     <!-- Game Screen -->
     <div id="game-screen" class="screen">
+        <div id="camera-instruction-overlay">
+            <h2>Gesture Mode Ready!</h2>
+            <p>Use your <b>Index Finger</b> or <b>Nose</b> to steer Mahu.</p>
+            <p style="font-size: 16px; color: #a07a65;">(Hand overrides nose if both are detected)</p>
+            <button id="understand-btn" class="secondary-btn" style="margin-top: 20px;">Got it, Let's Play!</button>
+        </div>
+
         <img class="peek-cat" src="assets/peek-cat.png" alt="Peeking Cat">
+
+        <div id="camera-preview-container">
+            <video id="webcam" autoplay playsinline></video>
+            <div id="face-guide">Move your face or hand to steer!</div>
+        </div>
+
+        <div id="tracking-warning">
+            <span>⚠️ Cannot detect nose or hand! Adjust your position.</span>
+        </div>
 
         <div id="score-board">
             <span>Score: <span id="score">0</span></span>
@@ -65,13 +76,27 @@
 
         <p id="game-over-reason">You ate too much toxic food!</p>
         
-        <div class="button-group grid-2x2">
-            <button id="restart-btn" class="secondary-btn">Play Again</button>
+        <div class="button-group grid-2x2" style="margin-top: 30px; max-width: 320px;">
             <button id="main-menu-btn" class="secondary-btn">Main Menu</button>
-            <button id="over-gallery-btn" class="secondary-btn">Gallery</button>
-            <button id="over-next-bg-btn" class="secondary-btn">Next Theme</button>
-            <button id="bg-btn" class="secondary-btn" style="grid-column: span 2;">Custom BG</button>
-            <input type="file" id="bg-upload" accept="image/*" style="display: none;">
+            <button id="over-settings-btn" class="secondary-btn">Settings</button>
+        </div>
+    </div>
+
+    <!-- 👇 彻底重写的设置弹窗 👇 -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content settings-content">
+            <h2>Settings</h2>
+            
+            <div class="settings-menu-buttons">
+                <!-- 统一用 settings-btn-style 类 -->
+                <button id="open-gallery-btn" class="settings-btn-style">Gallery</button>
+                <button id="next-bg-btn" class="settings-btn-style">Next Theme</button>
+                <button id="upload-bg-btn" class="settings-btn-style">Custom Theme</button>
+                <input type="file" id="bg-upload" accept="image/*" style="display: none;">
+                
+                <!-- Close 单独加一个类 -->
+                <button id="close-settings-btn" class="settings-btn-style close-btn-style">Close</button>
+            </div>
         </div>
     </div>
 

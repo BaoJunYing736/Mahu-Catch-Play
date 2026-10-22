@@ -1,11 +1,10 @@
-import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8";
+import { FaceLandmarker, HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8";
 
 const startScreen = document.getElementById('start-screen');
 const gameScreen = document.getElementById('game-screen');
 const gameOverScreen = document.getElementById('game-over-screen');
 const startBtn = document.getElementById('start-btn');
-const restartBtn = document.getElementById('restart-btn');
-const mainMenuBtn = document.getElementById('main-menu-btn');
+const mainMenuBtn = document.getElementById('main-menu-btn'); 
 const cat = document.getElementById('cat');
 const catShadow = document.getElementById('cat-shadow');
 const scoreDisplay = document.getElementById('score');
@@ -17,11 +16,27 @@ const quitBtn = document.getElementById('quit-btn');
 const comboDisplay = document.getElementById('combo-display');
 const startCameraBtn = document.getElementById('start-camera-btn');
 
-const galleryBtn = document.getElementById('gallery-btn');
+const webcam = document.getElementById('webcam');
+const cameraPreviewContainer = document.getElementById('camera-preview-container');
+const trackingWarning = document.getElementById('tracking-warning');
+
+const cameraInstructionOverlay = document.getElementById('camera-instruction-overlay');
+const understandBtn = document.getElementById('understand-btn');
+
+// 设置相关
+const settingsBtn = document.getElementById('settings-btn');
+const overSettingsBtn = document.getElementById('over-settings-btn');
+const settingsModal = document.getElementById('settings-modal');
+const closeSettingsBtn = document.getElementById('close-settings-btn');
+const openGalleryBtn = document.getElementById('open-gallery-btn');
+const nextBgBtn = document.getElementById('next-bg-btn');
+const uploadBgBtn = document.getElementById('upload-bg-btn');
+const bgUpload = document.getElementById('bg-upload');
+
+// 图鉴相关
 const galleryModal = document.getElementById('gallery-modal');
 const closeGalleryBtn = document.getElementById('close-gallery-btn');
 const galleryGrid = document.getElementById('gallery-grid');
-const overGalleryBtn = document.getElementById('over-gallery-btn');
 
 const unlockedCatImg = document.getElementById('unlocked-cat-img');
 const unlockMessage = document.getElementById('unlock-message');
@@ -37,13 +52,12 @@ let spawnInterval = 800;
 let combo = 1;
 let isFrozen = false;
 
-// Camera Variables
+let faceLandmarker = null;
 let handLandmarker = null;
 let webcamRunning = false;
-let video = null;
 let lastVideoTime = -1;
+let lastDetectionTime = 0; 
 
-// Skin Management
 const totalSkins = 9;
 let highestScore = parseInt(localStorage.getItem('mahuHighScore')) || 0;
 let maxUnlockedLevel = Math.min(Math.floor(highestScore / 100) + 1, totalSkins);
@@ -58,7 +72,6 @@ function updateMainCat() {
 }
 updateMainCat();
 
-// Sound System
 const sounds = {
     normal: new Audio('assets/normal.mp3'), 
     good: new Audio('assets/good.mp3'),
@@ -80,7 +93,6 @@ function playSound(soundName) {
     }
 }
 
-// Food Config
 const normalFoods = [
     { img: "assets/jerky.png", points: 2, sound: 'good' },
     { img: "assets/canned_food.png", points: 1, sound: 'good' },
@@ -116,8 +128,15 @@ function startGame() {
     gameOverScreen.classList.remove('active');
     gameScreen.classList.add('active');
     
+    if (webcamRunning) {
+        cameraPreviewContainer.style.display = 'block';
+    } else {
+        cameraPreviewContainer.style.display = 'none';
+        trackingWarning.classList.remove('show');
+    }
+
     isPlaying = true;
-    startSpawnLoop();
+    startSpawnLoop(); 
 }
 
 function startSpawnLoop() {
@@ -161,6 +180,9 @@ function quitGame() {
     document.querySelectorAll('.falling-item').forEach(item => item.remove());
     gameScreen.classList.remove('active');
     startScreen.classList.add('active');
+    
+    cameraPreviewContainer.style.display = 'none';
+    trackingWarning.classList.remove('show');
 }
 
 function spawnItem() {
@@ -387,7 +409,7 @@ function updateCatPosition() {
     catShadow.style.left = catPosition + '%';
 }
 
-// Keyboard Control
+// 键盘 / 触摸
 document.addEventListener('keydown', (e) => {
     if (!isPlaying || webcamRunning) return; 
     if (e.key === 'ArrowLeft') catPosition -= 8;
@@ -398,7 +420,6 @@ document.addEventListener('keydown', (e) => {
     updateCatPosition();
 });
 
-// Touch Control
 let touchStartX = 0;
 let touchEndX = 0;
 
@@ -407,133 +428,167 @@ document.addEventListener('touchstart', (e) => {
 }, { passive: false });
 
 document.addEventListener('touchmove', (e) => {
-    if (isPlaying) {
-        e.preventDefault(); 
-    }
+    if (isPlaying) e.preventDefault(); 
 }, { passive: false });
 
 document.addEventListener('touchend', (e) => {
     if (!isPlaying || webcamRunning) return;
-    
     touchEndX = e.changedTouches[0].screenX;
-    handleSwipe();
-}, { passive: false });
-
-function handleSwipe() {
+    
     const swipeThreshold = 20; 
     const diff = touchEndX - touchStartX;
-
-    if (diff > swipeThreshold) {
-        catPosition += 15;
-    } else if (diff < -swipeThreshold) {
-        catPosition -= 15;
-    }
+    if (diff > swipeThreshold) catPosition += 15;
+    else if (diff < -swipeThreshold) catPosition -= 15;
 
     if (catPosition < 5) catPosition = 5;
     if (catPosition > 95) catPosition = 95;
-
     updateCatPosition();
-}
+}, { passive: false });
 
-// ==========================================
-// Camera Gesture Tracking
-// ==========================================
 async function initCamera() {
-    startCameraBtn.innerText = "Loading AI...";
-    
     try {
+        // 1. 显示提示界面
+        cameraInstructionOverlay.classList.add('show');
+
         const vision = await FilesetResolver.forVisionTasks(
             "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
         );
+        
         handLandmarker = await HandLandmarker.createFromOptions(vision, {
-            baseOptions: {
-                modelAssetPath: "assets/hand_landmarker.task", 
-                delegate: "GPU"
-            },
-            runningMode: "VIDEO",
-            numHands: 1
+            baseOptions: { modelAssetPath: "assets/hand_landmarker.task", delegate: "GPU" },
+            runningMode: "VIDEO", numHands: 1
         });
 
-        video = document.createElement("video");
-        video.style.display = "none"; 
-        document.body.appendChild(video);
+        faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: "assets/face_landmarker.task", delegate: "GPU" },
+            runningMode: "VIDEO", numFaces: 1
+        });
 
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        video.srcObject = stream;
-        await video.play();
+        webcam.srcObject = stream;
+        await webcam.play();
         webcamRunning = true;
 
-        startCameraBtn.innerText = "Camera Mode";
-        playSound('start');
-        startGame();
-        
-        detectHands();
+        // 2. 摄像头准备好了，开始检测手和脸
+        detectHandsAndFace();
+
+        // 3. 检查是否看过提示，如果没有看过，就启动 3 秒倒计时
+        const hasSeenInstruction = localStorage.getItem('hasSeenCameraInstruction');
+        if (!hasSeenInstruction) {
+            // 这里用 setTimeout 确保不会因为前面的 await 阻塞而失效
+            setTimeout(() => {
+                // 如果提示框还在显示，就自动关闭并开始
+                if (cameraInstructionOverlay.classList.contains('show')) {
+                    dismissInstruction();
+                }
+            }, 3000); // 3秒后自动消失
+        } else {
+            // 如果看过了，直接开始游戏
+            dismissInstruction();
+        }
+
     } catch (err) {
         alert("Camera failed to start. Please allow permissions.\n" + err);
         startCameraBtn.innerText = "Camera Mode";
+        gameScreen.classList.remove('active');
+        startScreen.classList.add('active');
+        cameraInstructionOverlay.classList.remove('show');
     }
 }
 
-function detectHands() {
+function dismissInstruction() {
+    if (!cameraInstructionOverlay.classList.contains('show')) return;
+    
+    cameraInstructionOverlay.classList.remove('show');
+    localStorage.setItem('hasSeenCameraInstruction', 'true'); 
+    playSound('start');
+    startGame(); // 只有关闭提示后，才真正开始游戏
+}
+
+// 绑定“Got it”按钮事件（确保只绑定一次）
+understandBtn.onclick = () => {
+    dismissInstruction();
+};
+
+// 记录当前是否正在用手部控制
+let isHandControlActive = false;
+
+function detectHandsAndFace() {
     if (!webcamRunning) return;
 
-    if (video.currentTime !== lastVideoTime) {
-        lastVideoTime = video.currentTime;
+    if (webcam.currentTime !== lastVideoTime) {
+        lastVideoTime = webcam.currentTime;
         
-        const results = handLandmarker.detectForVideo(video, performance.now());
+        // 1. 先检测手
+        const handResults = handLandmarker.detectForVideo(webcam, performance.now());
+        let targetX = null;
+        let usingHand = false; // 是否在使用手
 
-        if (results.landmarks && results.landmarks.length > 0) {
-            const handX = results.landmarks[0][0].x; 
+        // 如果手部模型识别到了指尖
+        if (handResults.landmarks && handResults.landmarks.length > 0) {
+            const landmarks = handResults.landmarks[0];
+            if (landmarks[8]) {
+                targetX = landmarks[8].x;
+                usingHand = true;
+            }
+        } 
+
+        // 2. 关键：如果没有识别到手，才去识别鼻子
+        if (!usingHand) {
+            const faceResults = faceLandmarker.detectForVideo(webcam, performance.now());
+            if (faceResults.faceLandmarks && faceResults.faceLandmarks.length > 0) {
+                targetX = faceResults.faceLandmarks[0][1].x;
+            }
+        }
+
+        // 3. 更新位置
+        if (targetX !== null) {
+            lastDetectionTime = performance.now();
+            trackingWarning.classList.remove('show');
             
-            // Flip direction for mirror effect
-            let newPosition = (1 - handX) * 100;
-            
+            let newPosition = (1 - targetX) * 100;
             if (newPosition < 5) newPosition = 5;
             if (newPosition > 95) newPosition = 95;
             
-            catPosition = newPosition;
+            if (usingHand) {
+                // 如果用的是手，直接瞬间响应（绝对灵敏，不拖泥带水）
+                catPosition = newPosition;
+            } else {
+                // 如果用的是鼻子，稍微加一点点平滑过渡（防止鼻子轻微晃动导致猫咪高频抽搐）
+                catPosition = catPosition + (newPosition - catPosition) * 0.4;
+            }
+            
             updateCatPosition();
+        } else {
+            if (performance.now() - lastDetectionTime > 1000) {
+                trackingWarning.classList.add('show');
+            }
         }
     }
-    requestAnimationFrame(detectHands);
+    requestAnimationFrame(detectHandsAndFace);
 }
-
+// ==========================================
+// 按钮事件绑定
+// ==========================================
 startCameraBtn.addEventListener('click', () => {
     playSound('button');
-    initCamera().catch(err => {
-        alert("Camera error:\n" + err);
-        startCameraBtn.innerText = "Camera Mode";
-    });
+    startScreen.classList.remove('active');
+    gameScreen.classList.add('active');
+    
+    cameraInstructionOverlay.classList.add('show');
+    startCameraBtn.innerText = "Loading AI...";
+    
+    initCamera().catch(err => console.error(err));
 });
 
-// ==========================================
-// UI Events
-// ==========================================
-galleryBtn.addEventListener('click', () => {
-    playSound('button'); 
-    renderGallery();
-    galleryModal.classList.add('show');
-});
-overGalleryBtn.addEventListener('click', () => {
-    playSound('button'); 
-    renderGallery();
-    galleryModal.classList.add('show');
-});
-closeGalleryBtn.addEventListener('click', () => {
-    playSound('button'); 
-    galleryModal.classList.remove('show');
+startBtn.addEventListener('click', () => { 
+    playSound('start'); 
+    webcamRunning = false; 
+    startGame(); 
 });
 
+// 背景相关
 const allScreens = document.querySelectorAll('.screen'); 
-const startNextBgBtn = document.getElementById('start-next-bg-btn');
-const overNextBgBtn = document.getElementById('over-next-bg-btn');
-
-const startBgBtn = document.getElementById('start-bg-btn');
-const startBgUpload = document.getElementById('start-bg-upload');
-
-const bgBtn = document.getElementById('bg-btn');
-const bgUpload = document.getElementById('bg-upload');
-
 const builtInBackgrounds = [
     'assets/bg1.png', 'assets/bg2.png', 'assets/bg3.png',
     'assets/bg4.jpg', 'assets/bg5.jpg', 'assets/bg6.jpg'
@@ -541,14 +596,9 @@ const builtInBackgrounds = [
 let currentBgIndex = 0;
 
 function applyBackgroundToAll(url) {
-    allScreens.forEach(screen => {
-        screen.style.backgroundImage = `url('${url}')`;
-    });
+    allScreens.forEach(screen => { screen.style.backgroundImage = `url('${url}')`; });
 }
-
-if (builtInBackgrounds.length > 0) {
-    applyBackgroundToAll(builtInBackgrounds[0]);
-}
+if (builtInBackgrounds.length > 0) applyBackgroundToAll(builtInBackgrounds[0]);
 
 function nextBackground() {
     if (builtInBackgrounds.length === 0) return;
@@ -558,28 +608,36 @@ function nextBackground() {
     playSound('button'); 
 }
 
-startNextBgBtn.addEventListener('click', nextBackground);
-overNextBgBtn.addEventListener('click', nextBackground);
-
-startBgBtn.addEventListener('click', () => {
-    playSound('button'); 
-    startBgUpload.click();
+// ==========================================
+// 设置面板交互
+// ==========================================
+settingsBtn.addEventListener('click', () => {
+    playSound('button');
+    settingsModal.classList.add('show');
 });
-startBgUpload.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            applyBackgroundToAll(event.target.result); 
-        };
-        reader.readAsDataURL(file);
-    }
+overSettingsBtn.addEventListener('click', () => {
+    playSound('button');
+    settingsModal.classList.add('show');
 });
 
-bgBtn.addEventListener('click', () => {
-    playSound('button'); 
+closeSettingsBtn.addEventListener('click', () => {
+    playSound('button');
+    settingsModal.classList.remove('show');
+});
+
+openGalleryBtn.addEventListener('click', () => {
+    playSound('button');
+    renderGallery(); 
+    galleryModal.classList.add('show');
+});
+
+nextBgBtn.addEventListener('click', nextBackground);
+
+uploadBgBtn.addEventListener('click', () => {
+    playSound('button');
     bgUpload.click();
 });
+
 bgUpload.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -591,25 +649,21 @@ bgUpload.addEventListener('change', (e) => {
     }
 });
 
-// Start, Restart, Quit, Main Menu
-startBtn.addEventListener('click', () => { playSound('start'); startGame(); });
-restartBtn.addEventListener('click', () => { playSound('start'); startGame(); });
-quitBtn.addEventListener('click', () => { playSound('button'); quitGame(); }); 
+closeGalleryBtn.addEventListener('click', () => {
+    playSound('button');
+    galleryModal.classList.remove('show');
+});
 
+// 其他
+quitBtn.addEventListener('click', () => { playSound('button'); quitGame(); }); 
 mainMenuBtn.addEventListener('click', () => {
     playSound('button');
     gameOverScreen.classList.remove('active');
     startScreen.classList.add('active');
 });
 
-// ==========================================
-// 👇 游戏主循环 (碰撞检测)
-// ==========================================
 function gameTick() {
-    if (isPlaying) {
-        checkCollision();
-    }
+    if (isPlaying) checkCollision();
     requestAnimationFrame(gameTick);
 }
-
 gameTick();

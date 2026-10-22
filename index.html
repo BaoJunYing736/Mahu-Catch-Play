@@ -15,10 +15,19 @@
         <h1>Mahu Catch & Play</h1>
         <p class="subtitle">Catch food, avoid toxic items!</p>
         
+        <!-- 最高分展示 -->
+        <p id="high-score-display" style="font-size: 18px; color: #a07a65; margin-top: -20px; margin-bottom: 20px; font-weight: bold; z-index: 10; position: relative;">Best Score: 0</p>
+        
         <div class="main-menu-buttons">
             <button id="start-camera-btn" class="secondary-btn">Camera Mode</button>
             <button id="start-btn" class="secondary-btn">Classic Mode</button>
             <button id="settings-btn" class="secondary-btn">Settings</button>
+        </div>
+
+        <!-- 音量控制组件 -->
+        <div class="volume-control">
+            <button id="mute-btn" class="icon-btn">🔊</button>
+            <input type="range" id="volume-slider" min="0" max="1" step="0.1" value="0.5">
         </div>
     </div>
 
@@ -82,19 +91,17 @@
         </div>
     </div>
 
-    <!-- 👇 彻底重写的设置弹窗 👇 -->
+    <!-- 设置弹窗 -->
     <div id="settings-modal" class="modal">
         <div class="modal-content settings-content">
             <h2>Settings</h2>
             
             <div class="settings-menu-buttons">
-                <!-- 统一用 settings-btn-style 类 -->
                 <button id="open-gallery-btn" class="settings-btn-style">Gallery</button>
                 <button id="next-bg-btn" class="settings-btn-style">Next Theme</button>
                 <button id="upload-bg-btn" class="settings-btn-style">Custom Theme</button>
                 <input type="file" id="bg-upload" accept="image/*" style="display: none;">
                 
-                <!-- Close 单独加一个类 -->
                 <button id="close-settings-btn" class="settings-btn-style close-btn-style">Close</button>
             </div>
         </div>

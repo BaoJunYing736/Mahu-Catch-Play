@@ -23,7 +23,6 @@ const trackingWarning = document.getElementById('tracking-warning');
 const cameraInstructionOverlay = document.getElementById('camera-instruction-overlay');
 const understandBtn = document.getElementById('understand-btn');
 
-// 设置相关
 const settingsBtn = document.getElementById('settings-btn');
 const overSettingsBtn = document.getElementById('over-settings-btn');
 const settingsModal = document.getElementById('settings-modal');
@@ -33,7 +32,6 @@ const nextBgBtn = document.getElementById('next-bg-btn');
 const uploadBgBtn = document.getElementById('upload-bg-btn');
 const bgUpload = document.getElementById('bg-upload');
 
-// 图鉴相关
 const galleryModal = document.getElementById('gallery-modal');
 const closeGalleryBtn = document.getElementById('close-gallery-btn');
 const galleryGrid = document.getElementById('gallery-grid');
@@ -41,6 +39,11 @@ const galleryGrid = document.getElementById('gallery-grid');
 const unlockedCatImg = document.getElementById('unlocked-cat-img');
 const unlockMessage = document.getElementById('unlock-message');
 const nextUnlockInfo = document.getElementById('next-unlock-info');
+
+// 新增的音量和最高分 UI
+const highScoreDisplay = document.getElementById('high-score-display');
+const muteBtn = document.getElementById('mute-btn');
+const volumeSlider = document.getElementById('volume-slider');
 
 let score = 0;
 let hp = 3; 
@@ -67,8 +70,16 @@ if (selectedSkinLevel > maxUnlockedLevel) {
     selectedSkinLevel = maxUnlockedLevel;
 }
 
+// 音量相关状态
+let isMuted = localStorage.getItem('mahuMuted') === 'true';
+let savedVolume = parseFloat(localStorage.getItem('mahuVolume')) || 0.5;
+
 function updateMainCat() {
     cat.src = `assets/cats/cat${selectedSkinLevel}.png`;
+    highScoreDisplay.innerText = `Best Score: ${highestScore}`;
+    
+    volumeSlider.value = savedVolume;
+    muteBtn.innerText = isMuted || savedVolume === 0 ? '🔇' : '🔊';
 }
 updateMainCat();
 
@@ -80,11 +91,14 @@ const sounds = {
     button: new Audio('assets/button.mp3')
 };
 
-sounds.normal.volume = 0.6;
-sounds.good.volume = 0.6;
-sounds.toxic.volume = 0.8;
-sounds.start.volume = 0.5;
-sounds.button.volume = 0.5; 
+// 音量控制函数
+function updateVolume() {
+    Object.values(sounds).forEach(sound => {
+        sound.volume = isMuted ? 0 : savedVolume;
+    });
+    muteBtn.innerText = isMuted || savedVolume === 0 ? '🔇' : '🔊';
+}
+updateVolume();
 
 function playSound(soundName) {
     if (sounds[soundName]) {
@@ -157,6 +171,7 @@ function endGame(isToxic) {
         localStorage.setItem('mahuHighScore', highestScore);
         maxUnlockedLevel = Math.min(Math.floor(highestScore / 100) + 1, totalSkins);
     }
+    updateMainCat(); // 实时刷新主界面最高分
 
     unlockedCatImg.src = `assets/cats/cat${selectedSkinLevel}.png`;
     
@@ -409,7 +424,6 @@ function updateCatPosition() {
     catShadow.style.left = catPosition + '%';
 }
 
-// 键盘 / 触摸
 document.addEventListener('keydown', (e) => {
     if (!isPlaying || webcamRunning) return; 
     if (e.key === 'ArrowLeft') catPosition -= 8;
@@ -447,16 +461,16 @@ document.addEventListener('touchend', (e) => {
 
 async function initCamera() {
     try {
-        // 1. 显示提示界面
-        cameraInstructionOverlay.classList.add('show');
-
         const vision = await FilesetResolver.forVisionTasks(
             "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
         );
         
         handLandmarker = await HandLandmarker.createFromOptions(vision, {
             baseOptions: { modelAssetPath: "assets/hand_landmarker.task", delegate: "GPU" },
-            runningMode: "VIDEO", numHands: 1
+            runningMode: "VIDEO", numHands: 1,
+            minHandDetectionConfidence: 0.6,
+            minHandPresenceConfidence: 0.6,
+            minTrackingConfidence: 0.6
         });
 
         faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
@@ -469,24 +483,19 @@ async function initCamera() {
         await webcam.play();
         webcamRunning = true;
 
-        // 2. 摄像头准备好了，开始检测手和脸
-        detectHandsAndFace();
-
-        // 3. 检查是否看过提示，如果没有看过，就启动 3 秒倒计时
         const hasSeenInstruction = localStorage.getItem('hasSeenCameraInstruction');
-        if (!hasSeenInstruction) {
-            // 这里用 setTimeout 确保不会因为前面的 await 阻塞而失效
-            setTimeout(() => {
-                // 如果提示框还在显示，就自动关闭并开始
-                if (cameraInstructionOverlay.classList.contains('show')) {
-                    dismissInstruction();
-                }
-            }, 3000); // 3秒后自动消失
+        
+        if (hasSeenInstruction) {
+            startGame();
         } else {
-            // 如果看过了，直接开始游戏
-            dismissInstruction();
+            cameraInstructionOverlay.classList.add('show');
+            
+            const autoHideTimer = setTimeout(() => {
+                dismissInstruction();
+            }, 3000); 
         }
 
+        detectHandsAndFace();
     } catch (err) {
         alert("Camera failed to start. Please allow permissions.\n" + err);
         startCameraBtn.innerText = "Camera Mode";
@@ -502,15 +511,9 @@ function dismissInstruction() {
     cameraInstructionOverlay.classList.remove('show');
     localStorage.setItem('hasSeenCameraInstruction', 'true'); 
     playSound('start');
-    startGame(); // 只有关闭提示后，才真正开始游戏
+    startGame(); 
 }
 
-// 绑定“Got it”按钮事件（确保只绑定一次）
-understandBtn.onclick = () => {
-    dismissInstruction();
-};
-
-// 记录当前是否正在用手部控制
 let isHandControlActive = false;
 
 function detectHandsAndFace() {
@@ -519,29 +522,25 @@ function detectHandsAndFace() {
     if (webcam.currentTime !== lastVideoTime) {
         lastVideoTime = webcam.currentTime;
         
-        // 1. 先检测手
         const handResults = handLandmarker.detectForVideo(webcam, performance.now());
         let targetX = null;
-        let usingHand = false; // 是否在使用手
 
-        // 如果手部模型识别到了指尖
         if (handResults.landmarks && handResults.landmarks.length > 0) {
             const landmarks = handResults.landmarks[0];
             if (landmarks[8]) {
                 targetX = landmarks[8].x;
-                usingHand = true;
+                isHandControlActive = true; 
             }
         } 
 
-        // 2. 关键：如果没有识别到手，才去识别鼻子
-        if (!usingHand) {
+        if (targetX === null) {
             const faceResults = faceLandmarker.detectForVideo(webcam, performance.now());
             if (faceResults.faceLandmarks && faceResults.faceLandmarks.length > 0) {
                 targetX = faceResults.faceLandmarks[0][1].x;
             }
+            isHandControlActive = false; 
         }
 
-        // 3. 更新位置
         if (targetX !== null) {
             lastDetectionTime = performance.now();
             trackingWarning.classList.remove('show');
@@ -550,11 +549,9 @@ function detectHandsAndFace() {
             if (newPosition < 5) newPosition = 5;
             if (newPosition > 95) newPosition = 95;
             
-            if (usingHand) {
-                // 如果用的是手，直接瞬间响应（绝对灵敏，不拖泥带水）
+            if (isHandControlActive) {
                 catPosition = newPosition;
             } else {
-                // 如果用的是鼻子，稍微加一点点平滑过渡（防止鼻子轻微晃动导致猫咪高频抽搐）
                 catPosition = catPosition + (newPosition - catPosition) * 0.4;
             }
             
@@ -567,9 +564,7 @@ function detectHandsAndFace() {
     }
     requestAnimationFrame(detectHandsAndFace);
 }
-// ==========================================
-// 按钮事件绑定
-// ==========================================
+
 startCameraBtn.addEventListener('click', () => {
     playSound('button');
     startScreen.classList.remove('active');
@@ -587,7 +582,6 @@ startBtn.addEventListener('click', () => {
     startGame(); 
 });
 
-// 背景相关
 const allScreens = document.querySelectorAll('.screen'); 
 const builtInBackgrounds = [
     'assets/bg1.png', 'assets/bg2.png', 'assets/bg3.png',
@@ -608,9 +602,6 @@ function nextBackground() {
     playSound('button'); 
 }
 
-// ==========================================
-// 设置面板交互
-// ==========================================
 settingsBtn.addEventListener('click', () => {
     playSound('button');
     settingsModal.classList.add('show');
@@ -654,7 +645,6 @@ closeGalleryBtn.addEventListener('click', () => {
     galleryModal.classList.remove('show');
 });
 
-// 其他
 quitBtn.addEventListener('click', () => { playSound('button'); quitGame(); }); 
 mainMenuBtn.addEventListener('click', () => {
     playSound('button');
@@ -662,8 +652,41 @@ mainMenuBtn.addEventListener('click', () => {
     startScreen.classList.add('active');
 });
 
+// 音量滑块和静音按钮事件
+volumeSlider.addEventListener('input', (e) => {
+    savedVolume = parseFloat(e.target.value);
+    localStorage.setItem('mahuVolume', savedVolume);
+    
+    if (savedVolume === 0) {
+        isMuted = true;
+        localStorage.setItem('mahuMuted', 'true');
+    } else {
+        isMuted = false;
+        localStorage.setItem('mahuMuted', 'false');
+    }
+    updateVolume();
+});
+
+muteBtn.addEventListener('click', () => {
+    isMuted = !isMuted;
+    localStorage.setItem('mahuMuted', isMuted);
+    
+    if (!isMuted && savedVolume === 0) {
+        savedVolume = 0.5;
+        volumeSlider.value = 0.5;
+        localStorage.setItem('mahuVolume', savedVolume);
+    }
+    
+    updateVolume();
+    playSound('button');
+});
+
 function gameTick() {
     if (isPlaying) checkCollision();
     requestAnimationFrame(gameTick);
 }
+// 确保按钮点击事件绑定成功
+understandBtn.addEventListener('click', () => {
+    dismissInstruction();
+});
 gameTick();
